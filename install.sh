@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
-
-ROOT_DIR="$(pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 TARGET_DIR="${1:-$HOME/.local/bin}"
 TARGET_CMD="$TARGET_DIR/openvpn3-setup"

@@ -5,11 +5,7 @@ SCRIPT_PATH="$0"
 SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
-XDG_DATA_HOME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
-XDG_STATE_HOME_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
-
-DESKTOP_DIR="$XDG_DATA_HOME_DIR/applications"
-STATE_DIR="$XDG_STATE_HOME_DIR/openvpn3-setup"
+DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
 usage() {
   cat <<EOF
@@ -46,7 +42,6 @@ require_n_args() {
 not_implemented() {
   local command="$1"
 
-  notify-send -a "$SCRIPT_NAME" -i "dialog-warning" "OpenVPN" "$command: not implemented."
   die "not implemented: $command"
 }
 
