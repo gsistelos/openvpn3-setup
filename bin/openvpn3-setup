@@ -23,7 +23,7 @@ Usage:
 EOF
 }
 
-die() {
+error() {
   echo "$*" >&2
   exit 1
 }
@@ -35,14 +35,14 @@ require_n_args() {
   local received="$#"
   if [[ "$received" -ne "$expected" ]]; then
     usage >&2
-    die "invalid number of arguments"
+    error "invalid number of arguments"
   fi
 }
 
 not_implemented() {
   local command="$1"
 
-  die "not implemented: $command"
+  error "not implemented: $command"
 }
 
 cmd_add() {
@@ -68,7 +68,7 @@ StartupNotify=false
 EOF
 
   if openvpn3 config-manage --config "$profile_name" --show >/dev/null 2>&1; then
-    die "profile already exists: $profile_name"
+    error "profile already exists: $profile_name"
   fi
 
   openvpn3 config-import --config "$ovpn_file" --name "$profile_name"
@@ -89,10 +89,10 @@ cmd_connect() {
 
   if openvpn3 session-stats --config "$profile_name" >/dev/null 2>&1; then
     if openvpn3 session-auth | grep -q "Config name: $profile_name"; then
-      die "profile is waiting for authentication: $profile_name"
+      error "profile is waiting for authentication: $profile_name"
     fi
 
-    die "profile is already connected: $profile_name"
+    error "profile is already connected: $profile_name"
   fi
 
   openvpn3 session-start --config "$profile_name"
@@ -126,7 +126,7 @@ cmd_status() {
   local profile_name="$1"
 
   if ! openvpn3 config-manage --config "$profile_name" --show >/dev/null 2>&1; then
-    die "profile does not exist: $profile_name"
+    error "profile does not exist: $profile_name"
   fi
 
   if openvpn3 session-stats --config "$profile_name" >/dev/null 2>&1; then
@@ -175,7 +175,7 @@ main() {
       ;;
     *)
       usage >&2
-      die "unknown command: $command"
+      error "unknown command: $command"
       ;;
   esac
 }
