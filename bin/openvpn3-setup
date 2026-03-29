@@ -1,5 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Work in progress..."
-exit 1
+usage() {
+  cat <<EOF
+Usage:
+  openvpn3-setup add <ovpn-file> <profile-name>
+  openvpn3-setup remove <profile-name>
+  openvpn3-setup connect <profile-name>
+  openvpn3-setup disconnect <profile-name>
+  openvpn3-setup toggle <profile-name>
+  openvpn3-setup status <profile-name>
+  openvpn3-setup list
+  openvpn3-setup set-firefox-profile <profile-name> <firefox-profile-path>
+  openvpn3-setup clear-firefox-profile <profile-name>
+  openvpn3-setup help
+EOF
+}
+
+die() {
+  echo "$*" >&2
+  exit 1
+}
+
+require_n_args() {
+  local expected="$1"
+  shift
+
+  local received="$#"
+  if [[ "$received" -ne "$expected" ]]; then
+    usage >&2
+    die "invalid number of arguments"
+  fi
+}
+
+not_implemented() {
+  local command="$1"
+
+  echo "not implemented: $command" >&2
+  exit 1
+}
+
+cmd_add() {
+  require_n_args 2 "$@"
+  not_implemented "add"
+}
+
+cmd_remove() {
+  require_n_args 1 "$@"
+  not_implemented "remove"
+}
+
+cmd_connect() {
+  require_n_args 1 "$@"
+  not_implemented "connect"
+}
+
+cmd_disconnect() {
+  require_n_args 1 "$@"
+  not_implemented "disconnect"
+}
+
+cmd_toggle() {
+  require_n_args 1 "$@"
+  not_implemented "toggle"
+}
+
+cmd_status() {
+  require_n_args 1 "$@"
+  not_implemented "status"
+}
+
+cmd_list() {
+  require_n_args 0 "$@"
+  not_implemented "list"
+}
+
+cmd_set_firefox_profile() {
+  require_n_args 2 "$@"
+  not_implemented "set-firefox-profile"
+}
+
+cmd_clear_firefox_profile() {
+  require_n_args 1 "$@"
+  not_implemented "clear-firefox-profile"
+}
+
+main() {
+  local command="${1:-help}"
+  shift || true
+
+  case "$command" in
+    add)                   cmd_add "$@" ;;
+    remove)                cmd_remove "$@" ;;
+    connect)               cmd_connect "$@" ;;
+    disconnect)            cmd_disconnect "$@" ;;
+    toggle)                cmd_toggle "$@" ;;
+    status)                cmd_status "$@" ;;
+    list)                  cmd_list "$@" ;;
+    set-firefox-profile)   cmd_set_firefox_profile "$@" ;;
+    clear-firefox-profile) cmd_clear_firefox_profile "$@" ;;
+    help|-h|--help)
+      require_n_args 0 "$@"
+      usage
+      ;;
+    *)
+      usage >&2
+      die "unknown command: $command"
+      ;;
+  esac
+}
+
+main "$@"
