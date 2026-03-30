@@ -70,6 +70,12 @@ profile_is_waiting_for_authentication() {
   return 1
 }
 
+get_auth_url() {
+  local profile_name="$1"
+
+  openvpn3 session-auth 2>/dev/null | grep -A2 "Config name: $profile_name" | grep -o "https://[^ ]*"
+}
+
 not_implemented() {
   local command="$1"
 
@@ -122,7 +128,12 @@ cmd_connect() {
 
   if profile_is_connected "$profile_name"; then
     if profile_is_waiting_for_authentication "$profile_name"; then
-      error "profile \"$profile_name\" is waiting for authentication"
+      local auth_url="$(get_auth_url "$profile_name" || true)"
+      if [[ -n "$auth_url" ]]; then
+        error "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
+      fi
+
+      error "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
     fi
 
     error "profile \"$profile_name\" is already connected"
@@ -164,12 +175,17 @@ cmd_status() {
 
   if profile_is_connected "$profile_name"; then
     if profile_is_waiting_for_authentication "$profile_name"; then
-      echo "waiting for authentication"
+      local auth_url="$(get_auth_url "$profile_name" || true)"
+      if [[ -n "$auth_url" ]]; then
+        echo "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
+      else
+        echo "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
+      fi
     else
-      echo "connected"
+      echo "profile \"$profile_name\" is connected"
     fi
   else
-    echo "disconnected"
+    echo "profile \"$profile_name\" is disconnected"
   fi
 }
 
