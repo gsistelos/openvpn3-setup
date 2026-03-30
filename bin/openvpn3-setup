@@ -5,6 +5,7 @@ SCRIPT_PATH="$0"
 SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
 
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$SCRIPT_NAME"
 
 usage() {
   cat <<EOF
@@ -25,7 +26,7 @@ EOF
 # Helper functions
 
 error() {
-  echo "$*" >&2
+  printf '%s\n' "$*" >&2
   exit 1
 }
 
@@ -73,7 +74,166 @@ profile_is_waiting_for_authentication() {
 get_auth_url() {
   local profile_name="$1"
 
-  openvpn3 session-auth 2>/dev/null | grep -A2 "Config name: $profile_name" | grep -o "https://[^ ]*"
+  openvpn3 session-auth 2>/dev/null | awk -v profile_name="$profile_name" '
+    $0 == "Config name: " profile_name {
+      in_profile = 1
+      next
+    }
+    /^Config name: / && in_profile {
+      in_profile = 0
+    }
+    in_profile && match($0, /https:\/\/[^ ]+/) {
+      print substr($0, RSTART, RLENGTH)
+      exit
+    }
+  '
+}
+
+get_config_file() {
+  local profile_name="$1"
+  printf '%s\n' "$CONFIG_DIR/${profile_name}.conf"
+}
+
+get_config_field() {
+  local profile_name="$1"
+  local field_name="$2"
+  local config_file
+
+  config_file="$(get_config_file "$profile_name")"
+
+  if [[ ! -f "$config_file" ]]; then
+    return 0
+  fi
+
+  awk -v field_name="$field_name" -F= '
+    $1 == field_name {
+      print substr($0, length(field_name) + 2)
+      exit
+    }
+  ' "$config_file"
+}
+
+set_config_field() {
+  local profile_name="$1"
+  local field_name="$2"
+  local field_value="$3"
+  local config_file
+  local temp_file
+
+  config_file="$(get_config_file "$profile_name")"
+  temp_file="$(mktemp)"
+
+  mkdir -p "$CONFIG_DIR"
+
+  if [[ -f "$config_file" ]]; then
+    awk -v field_name="$field_name" -v field_value="$field_value" '
+      BEGIN {
+        updated = 0
+      }
+      index($0, field_name "=") == 1 {
+        if (!updated) {
+          print field_name "=" field_value
+          updated = 1
+        }
+        next
+      }
+      {
+        print
+      }
+      END {
+        if (!updated) {
+          print field_name "=" field_value
+        }
+      }
+    ' "$config_file" > "$temp_file"
+  else
+    printf '%s=%s\n' "$field_name" "$field_value" > "$temp_file"
+  fi
+
+  mv "$temp_file" "$config_file"
+}
+
+clear_config_field() {
+  local profile_name="$1"
+  local field_name="$2"
+  local config_file
+  local temp_file
+
+  config_file="$(get_config_file "$profile_name")"
+
+  if [[ ! -f "$config_file" ]]; then
+    return 0
+  fi
+
+  temp_file="$(mktemp)"
+
+  awk -v field_name="$field_name" '
+    index($0, field_name "=") != 1 {
+      print
+    }
+  ' "$config_file" > "$temp_file"
+
+  if [[ -s "$temp_file" ]]; then
+    mv "$temp_file" "$config_file"
+  else
+    rm -f "$config_file" "$temp_file"
+  fi
+}
+
+get_firefox_profile() {
+  local profile_name="$1"
+  get_config_field "$profile_name" "firefox_profile"
+}
+
+wait_for_connected_or_auth() {
+  local profile_name="$1"
+  local attempt
+
+  for attempt in {1..20}; do
+    sleep 0.25
+
+    if profile_is_waiting_for_authentication "$profile_name"; then
+      printf '%s\n' "waiting_for_authentication"
+      return 0
+    fi
+
+    if profile_is_connected "$profile_name"; then
+      printf '%s\n' "connected"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "starting"
+}
+
+connect_with_firefox_profile() {
+  local profile_name="$1"
+  local firefox_profile="$2"
+  local session_state
+  local auth_url
+
+  openvpn3 session-start --background --config "$profile_name"
+
+  session_state="$(wait_for_connected_or_auth "$profile_name")"
+
+  if [[ "$session_state" == "connected" ]]; then
+    notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Connected to \"$profile_name\" profile."
+    return
+  fi
+
+  if [[ "$session_state" == "waiting_for_authentication" ]]; then
+    auth_url="$(get_auth_url "$profile_name" || true)"
+    if [[ -n "$auth_url" ]]; then
+      MOZ_DBUS_REMOTE=0 firefox --no-remote --profile "$firefox_profile" "$auth_url"
+      notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Opening authentication URL in Firefox for \"$profile_name\" profile..."
+    else
+      notify-send -a "$SCRIPT_NAME" -i "dialog-warning" "OpenVPN" "Could not find authentication URL for \"$profile_name\" profile."
+      openvpn3 session-manage --disconnect --config "$profile_name"
+    fi
+    return
+  fi
+
+  notify-send -a "$SCRIPT_NAME" -i "dialog-warning" "OpenVPN" "Connection for \"$profile_name\" is still starting. Run \"$SCRIPT_NAME status $profile_name\"."
 }
 
 not_implemented() {
@@ -125,10 +285,16 @@ cmd_connect() {
   require_n_args 1 "$@"
 
   local profile_name="$1"
+  local auth_url
+  local firefox_profile
+
+  if ! profile_exists "$profile_name"; then
+    error "profile \"$profile_name\" does not exist"
+  fi
 
   if profile_is_connected "$profile_name"; then
     if profile_is_waiting_for_authentication "$profile_name"; then
-      local auth_url="$(get_auth_url "$profile_name" || true)"
+      auth_url="$(get_auth_url "$profile_name" || true)"
       if [[ -n "$auth_url" ]]; then
         error "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
       fi
@@ -139,8 +305,14 @@ cmd_connect() {
     error "profile \"$profile_name\" is already connected"
   fi
 
-  openvpn3 session-start --config "$profile_name"
-  notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Connected to \"$profile_name\" profile."
+  firefox_profile="$(get_firefox_profile "$profile_name" || true)"
+  if [[ ! -n "$firefox_profile" ]]; then
+    openvpn3 session-start --config "$profile_name"
+    notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Connected to \"$profile_name\" profile."
+    return
+  fi
+
+  connect_with_firefox_profile "$profile_name" "$firefox_profile"
 }
 
 cmd_disconnect() {
@@ -168,6 +340,7 @@ cmd_status() {
   require_n_args 1 "$@"
 
   local profile_name="$1"
+  local auth_url
 
   if ! profile_exists "$profile_name"; then
     error "profile \"$profile_name\" does not exist"
@@ -175,7 +348,7 @@ cmd_status() {
 
   if profile_is_connected "$profile_name"; then
     if profile_is_waiting_for_authentication "$profile_name"; then
-      local auth_url="$(get_auth_url "$profile_name" || true)"
+      auth_url="$(get_auth_url "$profile_name" || true)"
       if [[ -n "$auth_url" ]]; then
         echo "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
       else
@@ -196,12 +369,31 @@ cmd_list() {
 
 cmd_set_firefox_profile() {
   require_n_args 2 "$@"
-  not_implemented "set-firefox-profile"
+
+  local profile_name="$1"
+  local firefox_profile_path="$2"
+
+  if ! profile_exists "$profile_name"; then
+    error "profile \"$profile_name\" does not exist"
+  fi
+
+  if [[ ! -d "$firefox_profile_path" ]]; then
+    error "firefox profile path \"$firefox_profile_path\" does not exist or is not a directory"
+  fi
+
+  set_config_field "$profile_name" "firefox_profile" "$firefox_profile_path"
 }
 
 cmd_clear_firefox_profile() {
   require_n_args 1 "$@"
-  not_implemented "clear-firefox-profile"
+
+  local profile_name="$1"
+
+  if ! profile_exists "$profile_name"; then
+    error "profile \"$profile_name\" does not exist"
+  fi
+
+  clear_config_field "$profile_name" "firefox_profile"
 }
 
 main() {
