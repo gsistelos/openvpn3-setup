@@ -66,7 +66,7 @@ openvpn3-setup list
 openvpn3-setup remove company-work
 ```
 
-## Firefox Profile Binding (Optional)
+## Firefox profile binding (optional)
 
 If you use multiple Microsoft accounts, bind a VPN profile to a Firefox profile path:
 
