@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_PATH="$0"
 SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
+NOTIFY=0
 
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$SCRIPT_NAME"
@@ -10,23 +11,41 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$SCRIPT_NAME"
 usage() {
   cat <<EOF
 Usage:
-  $SCRIPT_NAME add <ovpn-file> <profile-name>
-  $SCRIPT_NAME remove <profile-name>
-  $SCRIPT_NAME connect <profile-name>
-  $SCRIPT_NAME disconnect <profile-name>
-  $SCRIPT_NAME toggle <profile-name>
-  $SCRIPT_NAME status <profile-name>
-  $SCRIPT_NAME list
-  $SCRIPT_NAME set-firefox-profile <profile-name> <firefox-profile-path>
-  $SCRIPT_NAME clear-firefox-profile <profile-name>
-  $SCRIPT_NAME help
+  $SCRIPT_NAME [--notify] add <ovpn-file> <profile-name>
+  $SCRIPT_NAME [--notify] remove <profile-name>
+  $SCRIPT_NAME [--notify] connect <profile-name>
+  $SCRIPT_NAME [--notify] disconnect <profile-name>
+  $SCRIPT_NAME [--notify] toggle <profile-name>
+  $SCRIPT_NAME [--notify] status <profile-name>
+  $SCRIPT_NAME [--notify] list
+  $SCRIPT_NAME [--notify] set-firefox-profile <profile-name> <firefox-profile-path>
+  $SCRIPT_NAME [--notify] clear-firefox-profile <profile-name>
+  $SCRIPT_NAME [--notify] help
 EOF
 }
 
 # Helper functions
 
+log() {
+  local message="$*"
+
+  if [[ "$NOTIFY" -eq 1 ]]; then
+    notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "$message"
+    return
+  fi
+
+  printf '%s\n' "$message"
+}
+
 error() {
-  printf '%s\n' "$*" >&2
+  local message="$*"
+
+  if [[ "$NOTIFY" -eq 1 ]]; then
+    notify-send -a "$SCRIPT_NAME" -i "dialog-error" "OpenVPN" "$message"
+  else
+    printf '%s\n' "$message" >&2
+  fi
+
   exit 1
 }
 
@@ -39,6 +58,12 @@ require_n_args() {
     usage >&2
     error "invalid number of arguments"
   fi
+}
+
+get_desktop_file() {
+  local profile_name="$1"
+
+  printf '%s\n' "$DESKTOP_DIR/${SCRIPT_NAME}-${profile_name}.desktop"
 }
 
 profile_exists() {
@@ -251,15 +276,14 @@ cmd_add() {
   local profile_name="$2"
 
   mkdir -p "$DESKTOP_DIR"
-  local desktop_file="$DESKTOP_DIR/${SCRIPT_NAME}-${profile_name}.desktop"
 
-  cat > "$desktop_file" <<EOF
+  cat > "$(get_desktop_file "$profile_name")" <<EOF
 [Desktop Entry]
 Type=Application
 Version=1.0
 Name=VPN $profile_name
 Comment=Toggle OpenVPN for $profile_name profile
-Exec="$SCRIPT_PATH" toggle "$profile_name"
+Exec="$SCRIPT_PATH" --notify toggle "$profile_name"
 Icon=network-vpn
 Terminal=false
 Categories=Network;
@@ -277,6 +301,8 @@ cmd_remove() {
   require_n_args 1 "$@"
 
   local profile_name="$1"
+
+  rm -f "$(get_desktop_file "$profile_name")"
 
   openvpn3 config-remove --config "$profile_name"
 }
@@ -350,15 +376,15 @@ cmd_status() {
     if profile_is_waiting_for_authentication "$profile_name"; then
       auth_url="$(get_auth_url "$profile_name" || true)"
       if [[ -n "$auth_url" ]]; then
-        echo "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
+        log "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
       else
-        echo "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
+        log "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
       fi
     else
-      echo "profile \"$profile_name\" is connected"
+      log "profile \"$profile_name\" is connected"
     fi
   else
-    echo "profile \"$profile_name\" is disconnected"
+    log "profile \"$profile_name\" is disconnected"
   fi
 }
 
@@ -397,6 +423,23 @@ cmd_clear_firefox_profile() {
 }
 
 main() {
+  while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+      --notify)
+        NOTIFY=1
+        shift
+        ;;
+      --help)
+        usage
+        return 0
+        ;;
+      *)
+        usage >&2
+        error "unknown option: $1"
+        ;;
+    esac
+  done
+
   local command="${1:-help}"
   shift || true
 
