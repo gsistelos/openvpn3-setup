@@ -89,7 +89,7 @@ profile_is_connected() {
 profile_is_waiting_for_authentication() {
   local profile_name="$1"
 
-  if openvpn3 session-auth | grep -q "Config name: $profile_name"; then
+  if { openvpn3 session-auth 2>/dev/null || true; } | grep -q "Config name: $profile_name"; then
     return 0
   fi
 
@@ -99,16 +99,12 @@ profile_is_waiting_for_authentication() {
 get_auth_url() {
   local profile_name="$1"
 
-  openvpn3 session-auth 2>/dev/null | awk -v profile_name="$profile_name" '
-    $0 == "Config name: " profile_name {
-      in_profile = 1
-      next
-    }
-    /^Config name: / && in_profile {
-      in_profile = 0
-    }
-    in_profile && match($0, /https:\/\/[^ ]+/) {
-      print substr($0, RSTART, RLENGTH)
+  { openvpn3 session-auth 2>/dev/null || true; } | awk -v profile_name="$profile_name" '
+    /^-+$/ { in_profile = 0 }
+    $0 == (" Config name: " profile_name) { in_profile = 1 }
+    in_profile && / Auth URL: / {
+      sub(/ Auth URL: /, "")
+      print
       exit
     }
   '
@@ -116,6 +112,7 @@ get_auth_url() {
 
 get_config_file() {
   local profile_name="$1"
+
   printf '%s\n' "$CONFIG_DIR/${profile_name}.conf"
 }
 
@@ -207,6 +204,7 @@ clear_config_field() {
 
 get_firefox_profile() {
   local profile_name="$1"
+
   get_config_field "$profile_name" "firefox_profile"
 }
 
@@ -214,8 +212,8 @@ wait_for_connected_or_auth() {
   local profile_name="$1"
   local attempt
 
-  for attempt in {1..20}; do
-    sleep 0.25
+  for attempt in {1..5}; do
+    sleep 3
 
     if profile_is_waiting_for_authentication "$profile_name"; then
       printf '%s\n' "waiting_for_authentication"
@@ -242,7 +240,7 @@ connect_with_firefox_profile() {
   session_state="$(wait_for_connected_or_auth "$profile_name")"
 
   if [[ "$session_state" == "connected" ]]; then
-    notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Connected to \"$profile_name\" profile."
+    log "Connected to \"$profile_name\" profile."
     return
   fi
 
@@ -250,15 +248,15 @@ connect_with_firefox_profile() {
     auth_url="$(get_auth_url "$profile_name" || true)"
     if [[ -n "$auth_url" ]]; then
       MOZ_DBUS_REMOTE=0 firefox --no-remote --profile "$firefox_profile" "$auth_url"
-      notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Opening authentication URL in Firefox for \"$profile_name\" profile..."
+      log "Opening authentication URL in Firefox for \"$profile_name\" profile..."
     else
-      notify-send -a "$SCRIPT_NAME" -i "dialog-warning" "OpenVPN" "Could not find authentication URL for \"$profile_name\" profile."
+      log "Could not find authentication URL for \"$profile_name\" profile."
       openvpn3 session-manage --disconnect --config "$profile_name"
     fi
     return
   fi
 
-  notify-send -a "$SCRIPT_NAME" -i "dialog-warning" "OpenVPN" "Connection for \"$profile_name\" is still starting. Run \"$SCRIPT_NAME status $profile_name\"."
+  log "Connection for \"$profile_name\" is still starting. Run \"$SCRIPT_NAME status $profile_name\"."
 }
 
 not_implemented() {
@@ -334,7 +332,7 @@ cmd_connect() {
   firefox_profile="$(get_firefox_profile "$profile_name" || true)"
   if [[ ! -n "$firefox_profile" ]]; then
     openvpn3 session-start --config "$profile_name"
-    notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Connected to \"$profile_name\" profile."
+    log "Connected to \"$profile_name\" profile."
     return
   fi
 
@@ -347,7 +345,7 @@ cmd_disconnect() {
   local profile_name="$1"
 
   openvpn3 session-manage --disconnect --config "$profile_name"
-  notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "Disconnected from \"$profile_name\" profile."
+  log "Disconnected from \"$profile_name\" profile."
 }
 
 cmd_toggle() {
