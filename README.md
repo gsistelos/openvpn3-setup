@@ -9,9 +9,10 @@ On CachyOS + KDE, OpenVPN + Microsoft SSO interactive browser auth won't work in
 ## How it works
 
 - installs a local CLI: `openvpn3-setup`
-- `openvpn3-setup add <.ovpn-file> <profile-name>` imports the `.ovpn` profile and binds to a profile name
+- `openvpn3-setup add <.ovpn-file> <profile-name>` imports the `.ovpn` profile, binds to a profile name, and stores the `.ovpn` path locally
 - creates one KDE `.desktop` launcher per profile name
 - supports connect/disconnect toggle from CLI and desktop launcher. CLI and desktop behave interoperable over the same OpenVPN3 session
+- automatically re-imports a saved `.ovpn` profile if OpenVPN3 loses its config after reboot or a `dbus` restart
 - supports optional Firefox profile binding for SSO interactive browser auth
 - sends notifications for connection status changes
 
