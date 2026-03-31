@@ -247,8 +247,8 @@ connect_with_firefox_profile() {
   if [[ "$session_state" == "waiting_for_authentication" ]]; then
     auth_url="$(get_auth_url "$profile_name" || true)"
     if [[ -n "$auth_url" ]]; then
-      MOZ_DBUS_REMOTE=0 firefox --no-remote --profile "$firefox_profile" "$auth_url"
       log "Opening authentication URL in Firefox for \"$profile_name\" profile..."
+      MOZ_DBUS_REMOTE=0 firefox --no-remote --profile "$firefox_profile" "$auth_url"
     else
       log "Could not find authentication URL for \"$profile_name\" profile."
       openvpn3 session-manage --disconnect --config "$profile_name"
