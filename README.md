@@ -2,19 +2,12 @@
 
 ## The problem
 
-On CachyOS + KDE, OpenVPN + Microsoft SSO interactive browser auth won't work in the native NetworkManager flow.
+OpenVPN + Microsoft SSO interactive browser authentication won't work in the native NetworkManager flow.
+Thankfully, `openvpn3` CLI solves this, but its interface is not very friendly.
 
-`openvpn3-setup` solves this by managing OpenVPN3 profiles and exposing a KDE-friendly workflow through CLI commands and generated `.desktop` launchers.
+`openvpn3-setup` is a wrapper around `openvpn3` to manage profiles in a better CLI interface and generated `.desktop` launchers.
 
-## How it works
-
-- installs a local CLI: `openvpn3-setup`
-- `openvpn3-setup add <.ovpn-file> <profile-name>` imports the `.ovpn` profile, binds to a profile name, and stores the `.ovpn` path locally
-- creates one KDE `.desktop` launcher per profile name
-- supports connect/disconnect toggle from CLI and desktop launcher. CLI and desktop behave interoperable over the same OpenVPN3 session
-- automatically re-imports a saved `.ovpn` profile if OpenVPN3 loses its config after reboot or a `dbus` restart
-- supports optional Firefox profile binding for SSO interactive browser auth
-- sends notifications for connection status changes
+You can also link a VPN profile to a Firefox profile path so the SSO authentication attempts to use it.
 
 ## Install
 
@@ -26,57 +19,57 @@ cd openvpn3-setup
 ./install.sh
 ```
 
-Default install target is `~/.local/bin/openvpn3-setup`, that can be changed by passing an path as argument to the installer.
+Default install location is `~/.local/bin/openvpn3-setup`, but it can be changed by passing a path as an argument to the installer.
 
 ## Usage
 
 ### Add a VPN profile
 
 ```bash
-openvpn3-setup add /path/to/company.ovpn company-work
+openvpn3-setup add /path/to/my-profile.ovpn my-profile
 ```
 
-### Connect or disconnect
+This will create a `.desktop` launcher that can be used to toggle the VPN profile on and off.
+
+### Connect and disconnect
 
 CLI:
 
 ```bash
-openvpn3-setup connect company-work
-openvpn3-setup disconnect company-work
-openvpn3-setup toggle company-work
+openvpn3-setup connect my-profile
+openvpn3-setup disconnect my-profile
+# or
+openvpn3-setup toggle my-profile
 ```
 
 Desktop:
-- launch `VPN company-work` from an app launcher
-- running again toggles disconnect
-
-Interop behavior:
-- connect in CLI, disconnect in desktop works
-- connect in desktop, disconnect in CLI works
+- launch `VPN my-profile` from an app launcher to toggle the VPN profile on and off
 
 ### Check status and list profiles
 
 ```bash
-openvpn3-setup status company-work
+openvpn3-setup status my-profile
 openvpn3-setup list
 ```
 
 ### Remove profile
 
 ```bash
-openvpn3-setup remove company-work
+openvpn3-setup remove my-profile
 ```
 
-## Firefox profile binding (optional)
+This will remove the `.desktop` launcher from the system.
 
-If you use multiple Microsoft accounts, bind a VPN profile to a Firefox profile path:
+## Firefox profile binding
+
+If you use multiple Microsoft accounts, you can bind a VPN profile to a Firefox profile path:
 
 ```bash
-openvpn3-setup set-firefox-profile company-work /path/to/firefox/profile
+openvpn3-setup set-firefox-profile my-profile /path/to/firefox/profile
 ```
 
 Clear binding:
 
 ```bash
-openvpn3-setup clear-firefox-profile company-work
+openvpn3-setup clear-firefox-profile my-profile
 ```
