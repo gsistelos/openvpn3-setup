@@ -326,7 +326,9 @@ cmd_remove() {
 
   local profile_name="$1"
 
-  remove_config "$profile_name"
+  if config_exists "$profile_name"; then
+    remove_config "$profile_name"
+  fi
 
   rm -f "$(get_desktop_file "$profile_name")"
   rm -f "$(get_json_file "$profile_name")"
