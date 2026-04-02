@@ -85,6 +85,14 @@ add_config() {
   local ovpn_file="$1"
   local config_name="$2"
 
+  if [[ ! -f "$ovpn_file" ]]; then
+    error "ovpn file \"$ovpn_file\" does not exist"
+  fi
+
+  if [[ ! -r "$ovpn_file" ]]; then
+    error "ovpn file \"$ovpn_file\" is not readable"
+  fi
+
   # openvpn3 accepts multiple configs with the same name
   if config_exists "$config_name"; then
     error "config \"$config_name\" already exists"
