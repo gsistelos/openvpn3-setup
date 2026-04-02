@@ -223,9 +223,9 @@ set_json_field() {
   tmp_file="$(mktemp)"
 
   if [[ "$field_value" == "null" ]]; then
-    jq ".$field_name = null" "$json_file" > "$tmp_file"
+    jq --arg field_name "$field_name" '.[$field_name] = null' "$json_file" > "$tmp_file"
   else
-    jq ".$field_name = \"$field_value\"" "$json_file" > "$tmp_file"
+    jq --arg field_name "$field_name" --arg field_value "$field_value" '.[$field_name] = $field_value' "$json_file" > "$tmp_file"
   fi
 
   mv "$tmp_file" "$json_file"
