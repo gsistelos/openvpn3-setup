@@ -11,7 +11,7 @@ You can also link a VPN profile to a Firefox profile path so the SSO authenticat
 
 ## Install
 
-Requires `openvpn3` and `libnotify`.
+Requires `openvpn3`, `libnotify` and `jq`.
 
 ```bash
 git clone https://github.com/gsistelos/openvpn3-setup.git

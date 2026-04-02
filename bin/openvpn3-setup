@@ -6,21 +6,25 @@ SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
 NOTIFY=0
 
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$SCRIPT_NAME"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/openvpn3-setup"
+
+FIREFOX_PROFILE_FIELD="firefox_profile"
+OVPN_FILE_FIELD="ovpn_file"
 
 usage() {
   cat <<EOF
 Usage:
-  $SCRIPT_NAME [--notify] add <ovpn-file> <profile-name>
-  $SCRIPT_NAME [--notify] remove <profile-name>
-  $SCRIPT_NAME [--notify] connect <profile-name>
-  $SCRIPT_NAME [--notify] disconnect <profile-name>
-  $SCRIPT_NAME [--notify] toggle <profile-name>
-  $SCRIPT_NAME [--notify] status <profile-name>
-  $SCRIPT_NAME [--notify] list
-  $SCRIPT_NAME [--notify] set-firefox-profile <profile-name> <firefox-profile-path>
-  $SCRIPT_NAME [--notify] clear-firefox-profile <profile-name>
-  $SCRIPT_NAME [--notify] help
+  $SCRIPT_NAME [--notify] <option> [arguments...]
+  $SCRIPT_NAME add <ovpn-file> <profile-name>
+  $SCRIPT_NAME remove <profile-name>
+  $SCRIPT_NAME connect <profile-name>
+  $SCRIPT_NAME disconnect <profile-name>
+  $SCRIPT_NAME toggle <profile-name>
+  $SCRIPT_NAME status <profile-name>
+  $SCRIPT_NAME list
+  $SCRIPT_NAME set-firefox-profile <profile-name> <firefox-profile-path>
+  $SCRIPT_NAME clear-firefox-profile <profile-name>
+  $SCRIPT_NAME help
 EOF
 }
 
@@ -31,10 +35,9 @@ log() {
 
   if [[ "$NOTIFY" -eq 1 ]]; then
     notify-send -a "$SCRIPT_NAME" -i "dialog-information" "OpenVPN" "$message"
-    return
+  else
+    printf '%s\n' "$message"
   fi
-
-  printf '%s\n' "$message"
 }
 
 error() {
@@ -49,6 +52,11 @@ error() {
   exit 1
 }
 
+not_implemented() {
+  local command="$1"
+  error "not implemented: $command"
+}
+
 require_n_args() {
   local expected="$1"
   shift
@@ -60,201 +68,189 @@ require_n_args() {
   fi
 }
 
-get_desktop_file() {
-  local profile_name="$1"
+# Config management functions
+# Config is: openvpn3 managed config
 
-  printf '%s\n' "$DESKTOP_DIR/${SCRIPT_NAME}-${profile_name}.desktop"
-}
+config_exists() {
+  local config_name="$1"
 
-profile_exists() {
-  local profile_name="$1"
-
-  if openvpn3 config-manage --config "$profile_name" --show >/dev/null 2>&1; then
+  if openvpn3 config-manage --config "$config_name" --show >/dev/null 2>&1; then
     return 0
   fi
 
   return 1
 }
 
-profile_is_connected() {
-  local profile_name="$1"
+add_config() {
+  local ovpn_file="$1"
+  local config_name="$2"
 
-  if openvpn3 session-stats --config "$profile_name" >/dev/null 2>&1; then
+  # openvpn3 accepts multiple configs with the same name
+  if config_exists "$config_name"; then
+    error "config \"$config_name\" already exists"
+  fi
+
+  openvpn3 config-import --config "$ovpn_file" --name "$config_name"
+}
+
+remove_config() {
+  local config_name="$1"
+
+  # openvpn3 allows configs to be removed even if there are sessions using them
+  if session_exists "$config_name"; then
+    error "session for config \"$config_name\" is still active"
+  fi
+
+  openvpn3 config-remove --config "$config_name"
+}
+
+# Session management functions
+# Session is: openvpn3 session
+
+session_exists() {
+  local session_name="$1"
+
+  if openvpn3 session-stats --config "$session_name" >/dev/null 2>&1; then
     return 0
   fi
 
   return 1
 }
 
-profile_is_waiting_for_authentication() {
-  local profile_name="$1"
+session_is_waiting_for_authentication() {
+  local session_name="$1"
 
-  if { openvpn3 session-auth 2>/dev/null || true; } | grep -q "Config name: $profile_name"; then
+  if { openvpn3 session-auth 2>/dev/null || true; } | grep -q "Config name: $session_name"; then
     return 0
   fi
 
   return 1
 }
 
-get_auth_url() {
-  local profile_name="$1"
+get_session_auth_url() {
+  local session_name="$1"
 
-  { openvpn3 session-auth 2>/dev/null || true; } | awk -v profile_name="$profile_name" '
+  { openvpn3 session-auth 2>/dev/null || true; } | awk -v session_name="$session_name" '
     /^-+$/ { in_profile = 0 }
-    $0 == (" Config name: " profile_name) { in_profile = 1 }
-    in_profile && / Auth URL: / {
-      sub(/ Auth URL: /, "")
+    $0 == (" Config name: " session_name) { in_profile = 1 }
+    in_profile && /Auth URL:/ {
+      sub(/.*Auth URL:[ ]*/, "")
       print
       exit
     }
   '
 }
 
-get_config_file() {
-  local profile_name="$1"
+# Desktop file management functions
+# Desktop files are: openvpn3-setup desktop launcher files
 
-  printf '%s\n' "$CONFIG_DIR/${profile_name}.conf"
+get_desktop_file() {
+  local profile_name="$1"
+  printf '%s\n' "$DESKTOP_DIR/openvpn3-setup-${profile_name}.desktop"
 }
 
-profile_is_managed() {
+ensure_desktop_file_exists() {
   local profile_name="$1"
+  local desktop_file
+  
+  desktop_file="$(get_desktop_file "$profile_name")"
 
-  [[ -n "$(get_ovpn_file "$profile_name")" ]]
-}
+  if [[ ! -f "$desktop_file" ]]; then
+    mkdir -p "$DESKTOP_DIR"
 
-get_config_field() {
-  local profile_name="$1"
-  local field_name="$2"
-  local config_file
-
-  config_file="$(get_config_file "$profile_name")"
-
-  if [[ ! -f "$config_file" ]]; then
-    return 0
+    cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=VPN $profile_name
+Comment=Toggle OpenVPN for $profile_name profile
+Exec="$SCRIPT_PATH" --notify toggle "$profile_name"
+Icon=network-vpn
+Terminal=false
+Categories=Network;
+StartupNotify=false
+EOF
   fi
 
-  awk -v field_name="$field_name" -F= '
-    $1 == field_name {
-      print substr($0, length(field_name) + 2)
-      exit
-    }
-  ' "$config_file"
+  printf '%s\n' "$desktop_file"
 }
 
-set_config_field() {
+# JSON file management functions
+# JSON files are: openvpn3-setup state files
+
+get_json_file() {
+  local profile_name="$1"
+  printf '%s\n' "$CONFIG_DIR/${profile_name}.json"
+}
+
+ensure_json_file_exists() {
+  local profile_name="$1"
+  local json_file
+  
+  json_file="$(get_json_file "$profile_name")"
+
+  if [[ ! -f "$json_file" ]]; then
+    mkdir -p "$CONFIG_DIR"
+
+    cat > "$json_file" <<EOF
+{
+    "$FIREFOX_PROFILE_FIELD": null,
+    "$OVPN_FILE_FIELD": null
+}
+EOF
+  fi
+
+  printf '%s\n' "$json_file"
+}
+
+get_json_field() {
+  local profile_name="$1"
+  local field_name="$2"
+  local json_file
+
+  json_file="$(ensure_json_file_exists "$profile_name")"
+  jq -r ".$field_name" "$json_file"
+}
+
+set_json_field() {
   local profile_name="$1"
   local field_name="$2"
   local field_value="$3"
-  local config_file
-  local temp_file
+  local json_file
+  local tmp_file
 
-  config_file="$(get_config_file "$profile_name")"
-  temp_file="$(mktemp)"
+  json_file="$(ensure_json_file_exists "$profile_name")"
+  tmp_file="$(mktemp)"
 
-  mkdir -p "$CONFIG_DIR"
-
-  if [[ -f "$config_file" ]]; then
-    awk -v field_name="$field_name" -v field_value="$field_value" '
-      BEGIN {
-        updated = 0
-      }
-      index($0, field_name "=") == 1 {
-        if (!updated) {
-          print field_name "=" field_value
-          updated = 1
-        }
-        next
-      }
-      {
-        print
-      }
-      END {
-        if (!updated) {
-          print field_name "=" field_value
-        }
-      }
-    ' "$config_file" > "$temp_file"
+  if [[ "$field_value" == "null" ]]; then
+    jq ".$field_name = null" "$json_file" > "$tmp_file"
   else
-    printf '%s=%s\n' "$field_name" "$field_value" > "$temp_file"
+    jq ".$field_name = \"$field_value\"" "$json_file" > "$tmp_file"
   fi
 
-  mv "$temp_file" "$config_file"
+  mv "$tmp_file" "$json_file"
 }
 
-clear_config_field() {
+# Profile management functions
+# Profile is: openvpn3-setup managed profile
+
+profile_exists() {
   local profile_name="$1"
-  local field_name="$2"
-  local config_file
-  local temp_file
-
-  config_file="$(get_config_file "$profile_name")"
-
-  if [[ ! -f "$config_file" ]]; then
-    return 0
-  fi
-
-  temp_file="$(mktemp)"
-
-  awk -v field_name="$field_name" '
-    index($0, field_name "=") != 1 {
-      print
-    }
-  ' "$config_file" > "$temp_file"
-
-  if [[ -s "$temp_file" ]]; then
-    mv "$temp_file" "$config_file"
-  else
-    rm -f "$config_file" "$temp_file"
-  fi
+  [[ -f "$(get_json_file "$profile_name")" && -f "$(get_desktop_file "$profile_name")" ]]
 }
 
-get_firefox_profile() {
+error_if_profile_not_exists() {
   local profile_name="$1"
 
-  get_config_field "$profile_name" "firefox_profile"
+  if ! profile_exists "$profile_name"; then
+    if config_exists "$profile_name"; then
+      error "profile \"$profile_name\" is not managed by openvpn3-setup"
+    fi
+    error "profile \"$profile_name\" does not exist"
+  fi
 }
 
-get_ovpn_file() {
-  local profile_name="$1"
-
-  get_config_field "$profile_name" "ovpn_file"
-}
-
-canonicalize_path() {
-  local path="$1"
-
-  if command -v realpath >/dev/null 2>&1; then
-    realpath "$path"
-    return
-  fi
-
-  if command -v readlink >/dev/null 2>&1; then
-    readlink -f "$path"
-    return
-  fi
-
-  printf '%s\n' "$path"
-}
-
-ensure_profile_exists() {
-  local profile_name="$1"
-  local ovpn_file
-
-  if profile_exists "$profile_name"; then
-    return 0
-  fi
-
-  ovpn_file="$(get_ovpn_file "$profile_name")"
-  if [[ -z "$ovpn_file" ]]; then
-    error "profile \"$profile_name\" does not exist and no saved .ovpn path was found"
-  fi
-
-  if [[ ! -f "$ovpn_file" ]]; then
-    error "saved .ovpn file for profile \"$profile_name\" does not exist: $ovpn_file"
-  fi
-
-  openvpn3 config-import --config "$ovpn_file" --name "$profile_name"
-}
+# cmd_add auxiliary functions
 
 wait_for_connected_or_auth() {
   local profile_name="$1"
@@ -263,12 +259,12 @@ wait_for_connected_or_auth() {
   for attempt in {1..5}; do
     sleep 3
 
-    if profile_is_waiting_for_authentication "$profile_name"; then
+    if session_is_waiting_for_authentication "$profile_name"; then
       printf '%s\n' "waiting_for_authentication"
       return 0
     fi
 
-    if profile_is_connected "$profile_name"; then
+    if session_exists "$profile_name"; then
       printf '%s\n' "connected"
       return 0
     fi
@@ -281,7 +277,6 @@ connect_with_firefox_profile() {
   local profile_name="$1"
   local firefox_profile="$2"
   local session_state
-  local auth_url
 
   openvpn3 session-start --background --config "$profile_name"
 
@@ -293,7 +288,8 @@ connect_with_firefox_profile() {
   fi
 
   if [[ "$session_state" == "waiting_for_authentication" ]]; then
-    auth_url="$(get_auth_url "$profile_name" || true)"
+    local auth_url
+    auth_url="$(get_session_auth_url "$profile_name")"
     if [[ -n "$auth_url" ]]; then
       log "Opening authentication URL in Firefox for \"$profile_name\" profile..."
       MOZ_DBUS_REMOTE=0 firefox --no-remote --profile "$firefox_profile" "$auth_url"
@@ -307,12 +303,6 @@ connect_with_firefox_profile() {
   log "Connection for \"$profile_name\" is still starting. Run \"$SCRIPT_NAME status $profile_name\"."
 }
 
-not_implemented() {
-  local command="$1"
-
-  error "not implemented: $command"
-}
-
 # Command handlers
 
 cmd_add() {
@@ -320,35 +310,15 @@ cmd_add() {
 
   local ovpn_file="$1"
   local profile_name="$2"
-  local resolved_ovpn_file
 
-  if [[ ! -f "$ovpn_file" ]]; then
-    error ".ovpn file \"$ovpn_file\" does not exist"
-  fi
-
-  resolved_ovpn_file="$(canonicalize_path "$ovpn_file")"
-
-  if profile_exists "$profile_name" || profile_is_managed "$profile_name"; then
+  if profile_exists "$profile_name"; then
     error "profile \"$profile_name\" already exists"
   fi
 
-  mkdir -p "$DESKTOP_DIR"
+  add_config "$ovpn_file" "$profile_name"
 
-  cat > "$(get_desktop_file "$profile_name")" <<EOF
-[Desktop Entry]
-Type=Application
-Version=1.0
-Name=VPN $profile_name
-Comment=Toggle OpenVPN for $profile_name profile
-Exec="$SCRIPT_PATH" --notify toggle "$profile_name"
-Icon=network-vpn
-Terminal=false
-Categories=Network;
-StartupNotify=false
-EOF
-
-  openvpn3 config-import --config "$resolved_ovpn_file" --name "$profile_name"
-  set_config_field "$profile_name" "ovpn_file" "$resolved_ovpn_file"
+  ensure_desktop_file_exists "$profile_name"
+  set_json_field "$profile_name" "$OVPN_FILE_FIELD" "$ovpn_file"
 }
 
 cmd_remove() {
@@ -357,44 +327,45 @@ cmd_remove() {
   local profile_name="$1"
 
   rm -f "$(get_desktop_file "$profile_name")"
+  rm -f "$(get_json_file "$profile_name")"
 
-  if profile_exists "$profile_name"; then
-    openvpn3 config-remove --config "$profile_name"
-  fi
-
-  rm -f "$(get_config_file "$profile_name")"
+  remove_config "$profile_name"
 }
 
 cmd_connect() {
   require_n_args 1 "$@"
 
   local profile_name="$1"
-  local auth_url
-  local firefox_profile
 
-  ensure_profile_exists "$profile_name"
+  error_if_profile_not_exists "$profile_name"
 
-  if profile_is_connected "$profile_name"; then
-    if profile_is_waiting_for_authentication "$profile_name"; then
-      auth_url="$(get_auth_url "$profile_name" || true)"
+  if ! config_exists "$profile_name"; then
+    local ovpn_file
+    ovpn_file="$(get_json_field "$profile_name" "$OVPN_FILE_FIELD")"
+    add_config "$ovpn_file" "$profile_name"
+  fi
+
+  if session_exists "$profile_name"; then
+    if session_is_waiting_for_authentication "$profile_name"; then
+      local auth_url
+      auth_url="$(get_session_auth_url "$profile_name")"
       if [[ -n "$auth_url" ]]; then
         error "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
       fi
-
       error "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
     fi
-
     error "profile \"$profile_name\" is already connected"
   fi
 
-  firefox_profile="$(get_firefox_profile "$profile_name" || true)"
-  if [[ ! -n "$firefox_profile" ]]; then
-    openvpn3 session-start --config "$profile_name"
-    log "Connected to \"$profile_name\" profile."
+  local firefox_profile
+  firefox_profile="$(get_json_field "$profile_name" "$FIREFOX_PROFILE_FIELD")"
+  if [[ -n "$firefox_profile" ]]; then
+    connect_with_firefox_profile "$profile_name" "$firefox_profile"
     return
   fi
 
-  connect_with_firefox_profile "$profile_name" "$firefox_profile"
+  openvpn3 session-start --config "$profile_name"
+  log "Connected to \"$profile_name\" profile."
 }
 
 cmd_disconnect() {
@@ -411,7 +382,7 @@ cmd_toggle() {
 
   local profile_name="$1"
 
-  if profile_is_connected "$profile_name"; then
+  if session_exists "$profile_name"; then
     cmd_disconnect "$profile_name"
   else
     cmd_connect "$profile_name"
@@ -422,31 +393,26 @@ cmd_status() {
   require_n_args 1 "$@"
 
   local profile_name="$1"
-  local auth_url
 
-  if ! profile_exists "$profile_name"; then
-    if [[ -n "$(get_ovpn_file "$profile_name")" ]]; then
-      log "profile \"$profile_name\" is disconnected"
-      return
-    fi
+  error_if_profile_not_exists "$profile_name"
 
-    error "profile \"$profile_name\" does not exist"
-  fi
-
-  if profile_is_connected "$profile_name"; then
-    if profile_is_waiting_for_authentication "$profile_name"; then
-      auth_url="$(get_auth_url "$profile_name" || true)"
-      if [[ -n "$auth_url" ]]; then
-        log "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
-      else
-        log "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
-      fi
-    else
-      log "profile \"$profile_name\" is connected"
-    fi
-  else
+  if ! session_exists "$profile_name"; then
     log "profile \"$profile_name\" is disconnected"
+    return
   fi
+
+  if session_is_waiting_for_authentication "$profile_name"; then
+    local auth_url
+    auth_url="$(get_session_auth_url "$profile_name")"
+    if [[ -n "$auth_url" ]]; then
+      log "profile \"$profile_name\" is waiting for authentication, open the following URL in your browser: $auth_url"
+    else
+      log "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
+    fi
+    return
+  fi
+
+  log "profile \"$profile_name\" is connected"
 }
 
 cmd_list() {
@@ -460,15 +426,13 @@ cmd_set_firefox_profile() {
   local profile_name="$1"
   local firefox_profile_path="$2"
 
-  if ! profile_exists "$profile_name" && ! profile_is_managed "$profile_name"; then
-    error "profile \"$profile_name\" does not exist"
-  fi
+  error_if_profile_not_exists "$profile_name"
 
   if [[ ! -d "$firefox_profile_path" ]]; then
     error "firefox profile path \"$firefox_profile_path\" does not exist or is not a directory"
   fi
 
-  set_config_field "$profile_name" "firefox_profile" "$firefox_profile_path"
+  set_json_field "$profile_name" "$FIREFOX_PROFILE_FIELD" "$firefox_profile_path"
 }
 
 cmd_clear_firefox_profile() {
@@ -476,11 +440,9 @@ cmd_clear_firefox_profile() {
 
   local profile_name="$1"
 
-  if ! profile_exists "$profile_name" && ! profile_is_managed "$profile_name"; then
-    error "profile \"$profile_name\" does not exist"
-  fi
+  error_if_profile_not_exists "$profile_name"
 
-  clear_config_field "$profile_name" "firefox_profile"
+  set_json_field "$profile_name" "$FIREFOX_PROFILE_FIELD" null
 }
 
 main() {

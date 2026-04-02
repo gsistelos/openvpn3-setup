@@ -13,7 +13,7 @@ echo "Installed: $TARGET_CMD"
 
 if ! printf '%s' "$PATH" | tr ':' '\n' | grep -Fxq "$TARGET_DIR"; then
   echo ""
-  echo "Add $TARGET_DIR to PATH."
+  echo "Add $TARGET_DIR to your \$PATH."
 fi
 
 echo ""
