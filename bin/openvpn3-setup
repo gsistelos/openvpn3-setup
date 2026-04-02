@@ -209,7 +209,7 @@ get_json_field() {
   local json_file
 
   json_file="$(ensure_json_file_exists "$profile_name")"
-  jq -r ".$field_name" "$json_file"
+  jq -r --arg field_name "$field_name" '.[$field_name] // empty' "$json_file"
 }
 
 set_json_field() {
