@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 TARGET_CLI_DIR="${1:-$HOME/.local/bin}"
 TARGET_OPENVPN3_SETUP_CLI="$TARGET_DIR/openvpn3-setup"
