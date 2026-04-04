@@ -7,7 +7,7 @@ TARGET_CLI_DIR="${1:-$HOME/.local/bin}"
 TARGET_OPENVPN3_SETUP_CLI="$TARGET_DIR/openvpn3-setup"
 
 missing_required=()
-for command_name in openvpn3 libnotify jq; do
+for command_name in openvpn3 notify-send jq; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     missing_required+=("$command_name")
   fi
