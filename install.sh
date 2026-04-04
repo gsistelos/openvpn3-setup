@@ -3,11 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-TARGET_DIR="${1:-$HOME/.local/bin}"
-TARGET_CMD="$TARGET_DIR/openvpn3-setup"
+TARGET_CLI_DIR="${1:-$HOME/.local/bin}"
+TARGET_OPENVPN3_SETUP_CLI="$TARGET_DIR/openvpn3-setup"
 
 missing_required=()
-for command_name in openvpn3 jq; do
+for command_name in openvpn3 libnotify jq; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     missing_required+=("$command_name")
   fi
@@ -19,22 +19,14 @@ if [[ "${#missing_required[@]}" -gt 0 ]]; then
   exit 1
 fi
 
-if ! command -v notify-send >/dev/null 2>&1; then
-  echo "Warning: notify-send is not installed, desktop notifications will not work." >&2
-fi
+mkdir -p "$TARGET_CLI_DIR"
+install -m 0755 "$ROOT_DIR/bin/openvpn3-setup" "$TARGET_OPENVPN3_SETUP_CLI"
 
-if ! command -v firefox >/dev/null 2>&1; then
-  echo "Warning: firefox is not installed, Firefox profile auth helper will not work." >&2
-fi
+echo "Installed: $TARGET_OPENVPN3_SETUP_CLI"
 
-mkdir -p "$TARGET_DIR"
-install -m 0755 "$ROOT_DIR/bin/openvpn3-setup" "$TARGET_CMD"
-
-echo "Installed: $TARGET_CMD"
-
-if ! printf '%s' "$PATH" | tr ':' '\n' | grep -Fxq "$TARGET_DIR"; then
+if ! printf '%s' "$PATH" | tr ':' '\n' | grep -Fxq "$TARGET_CLI_DIR"; then
   echo ""
-  echo "Add $TARGET_DIR to your \$PATH."
+  echo "Add $TARGET_CLI_DIR to your \$PATH."
 fi
 
 echo ""
