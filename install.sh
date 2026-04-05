@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 TARGET_CLI_DIR="${1:-$HOME/.local/bin}"
-TARGET_OPENVPN3_SETUP_CLI="$TARGET_DIR/openvpn3-setup"
+TARGET_OPENVPN3_SETUP_CLI="$TARGET_CLI_DIR/openvpn3-setup"
 
 missing_required=()
 for command_name in openvpn3 notify-send jq; do

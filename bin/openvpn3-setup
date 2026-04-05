@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_PATH="$0"
-SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
+SCRIPT_NAME="$(basename "$0")"
 NOTIFY=0
 
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
@@ -161,7 +160,7 @@ Type=Application
 Version=1.0
 Name=VPN $profile_name
 Comment=Toggle OpenVPN for $profile_name profile
-Exec="$SCRIPT_PATH" --notify toggle "$profile_name"
+Exec="$SCRIPT_NAME" --notify toggle "$profile_name"
 Icon=network-vpn
 Terminal=false
 Categories=Network;
@@ -175,15 +174,15 @@ EOF
 # openvpn3-setup state files management functions
 
 get_json_file() {
-  local profile_name="$1"
-  printf '%s\n' "$CONFIG_DIR/${profile_name}.json"
+  local filename="$1"
+  printf '%s\n' "$CONFIG_DIR/${filename}.json"
 }
 
 ensure_json_file_exists() {
-  local profile_name="$1"
+  local filename="$1"
 
   local json_file
-  json_file="$(get_json_file "$profile_name")"
+  json_file="$(get_json_file "$filename")"
 
   if [[ ! -f "$json_file" ]]; then
     mkdir -p "$CONFIG_DIR"
@@ -200,22 +199,22 @@ EOF
 }
 
 get_json_field() {
-  local profile_name="$1"
+  local filename="$1"
   local field_name="$2"
 
   local json_file
-  json_file="$(ensure_json_file_exists "$profile_name")"
+  json_file="$(ensure_json_file_exists "$filename")"
 
   jq -r --arg field_name "$field_name" '.[$field_name] // empty' "$json_file"
 }
 
 set_json_field() {
-  local profile_name="$1"
+  local filename="$1"
   local field_name="$2"
   local field_value="$3"
 
   local json_file
-  json_file="$(ensure_json_file_exists "$profile_name")"
+  json_file="$(ensure_json_file_exists "$filename")"
 
   local tmp_file
   tmp_file="$(mktemp)"
@@ -289,7 +288,7 @@ connect_with_firefox_profile() {
     auth_url="$(get_session_auth_url "$profile_name")"
     if [[ -n "$auth_url" ]]; then
       log "Opening authentication URL in Firefox for \"$profile_name\" profile..."
-      MOZ_DBUS_REMOTE=0 firefox --no-remote --profile "$firefox_profile" "$auth_url"
+      firefox -no-remote --profile "$firefox_profile" "$auth_url"
     else
       log "Could not find authentication URL for \"$profile_name\" profile."
       openvpn3 session-manage --disconnect --config "$profile_name"
