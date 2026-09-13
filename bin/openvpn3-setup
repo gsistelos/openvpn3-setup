@@ -7,7 +7,6 @@ NOTIFY=0
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/openvpn3-setup"
 
-FIREFOX_PROFILE_FIELD="firefox_profile"
 OVPN_FILE_FIELD="ovpn_file"
 
 usage() {
@@ -21,8 +20,6 @@ Usage:
   $SCRIPT_NAME toggle <profile-name>
   $SCRIPT_NAME status <profile-name>
   $SCRIPT_NAME list
-  $SCRIPT_NAME set-firefox-profile <profile-name> <firefox-profile-path>
-  $SCRIPT_NAME clear-firefox-profile <profile-name>
   $SCRIPT_NAME help
 EOF
 }
@@ -269,36 +266,6 @@ wait_for_connected_or_auth() {
   printf '%s\n' "starting"
 }
 
-connect_with_firefox_profile() {
-  local profile_name="$1"
-  local firefox_profile="$2"
-
-  openvpn3 session-start --background --config "$profile_name"
-
-  local session_state
-  session_state="$(wait_for_connected_or_auth "$profile_name")"
-
-  if [[ "$session_state" == "connected" ]]; then
-    log "Connected to \"$profile_name\" profile."
-    return
-  fi
-
-  if [[ "$session_state" == "waiting_for_authentication" ]]; then
-    local auth_url
-    auth_url="$(get_session_auth_url "$profile_name")"
-    if [[ -n "$auth_url" ]]; then
-      log "Opening authentication URL in Firefox for \"$profile_name\" profile..."
-      firefox -no-remote --profile "$firefox_profile" "$auth_url"
-    else
-      log "Could not find authentication URL for \"$profile_name\" profile."
-      openvpn3 session-manage --disconnect --config "$profile_name"
-    fi
-    return
-  fi
-
-  log "Connection for \"$profile_name\" is still starting. Run \"$SCRIPT_NAME status $profile_name\"."
-}
-
 # Command handlers
 
 cmd_add() {
@@ -353,13 +320,6 @@ cmd_connect() {
       error "profile \"$profile_name\" is waiting for authentication, could not find authentication URL"
     fi
     error "profile \"$profile_name\" is already connected"
-  fi
-
-  local firefox_profile
-  firefox_profile="$(get_json_field "$profile_name" "$FIREFOX_PROFILE_FIELD")"
-  if [[ -n "$firefox_profile" ]]; then
-    connect_with_firefox_profile "$profile_name" "$firefox_profile"
-    return
   fi
 
   openvpn3 session-start --config "$profile_name"
@@ -420,31 +380,6 @@ cmd_list() {
   not_implemented "list"
 }
 
-cmd_set_firefox_profile() {
-  require_n_args 2 "$@"
-
-  local profile_name="$1"
-  local firefox_profile_path="$2"
-
-  error_if_profile_not_exists "$profile_name"
-
-  if [[ ! -d "$firefox_profile_path" ]]; then
-    error "firefox profile path \"$firefox_profile_path\" does not exist or is not a directory"
-  fi
-
-  set_json_field "$profile_name" "$FIREFOX_PROFILE_FIELD" "$firefox_profile_path"
-}
-
-cmd_clear_firefox_profile() {
-  require_n_args 1 "$@"
-
-  local profile_name="$1"
-
-  error_if_profile_not_exists "$profile_name"
-
-  set_json_field "$profile_name" "$FIREFOX_PROFILE_FIELD" null
-}
-
 main() {
   while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -474,8 +409,6 @@ main() {
     toggle)                cmd_toggle "$@" ;;
     status)                cmd_status "$@" ;;
     list)                  cmd_list "$@" ;;
-    set-firefox-profile)   cmd_set_firefox_profile "$@" ;;
-    clear-firefox-profile) cmd_clear_firefox_profile "$@" ;;
     help|-h|--help)
       require_n_args 0 "$@"
       usage
