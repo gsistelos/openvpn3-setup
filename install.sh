@@ -31,6 +31,5 @@ fi
 
 echo ""
 echo "Next steps:"
-echo "  1) openvpn3-setup add /path/to/profile.ovpn <name-of-profile>"
-echo "  2) openvpn3-setup set-firefox-profile <name-of-profile> /path/to/firefox/profile"
-echo "  3) toggle the VPN profile using the app launcher 'VPN <name-of-profile>' (or run: openvpn3-setup toggle <name-of-profile>)"
+echo "  1) openvpn3-setup add /path/to/profile.ovpn <profile-name>"
+echo "  2) toggle the VPN profile using the app launcher 'VPN <profile-name>' (or run: openvpn3-setup toggle <profile-name>)"

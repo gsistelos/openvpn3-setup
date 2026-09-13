@@ -60,16 +60,3 @@ openvpn3-setup remove my-profile
 
 This will remove the `.desktop` launcher from the system.
 
-## Firefox profile binding
-
-If you use multiple Microsoft accounts, you can bind a VPN profile to a Firefox profile path:
-
-```bash
-openvpn3-setup set-firefox-profile my-profile /path/to/firefox/profile
-```
-
-Clear binding:
-
-```bash
-openvpn3-setup clear-firefox-profile my-profile
-```
